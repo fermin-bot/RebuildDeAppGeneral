@@ -63,9 +63,10 @@ export class WorkshopService {
       vehicleId: '1',
       date: new Date(),
       cost: 150.50,
-      hours: 2,
-      mechanicId: 'u1',
-      mechanicName: 'Juan Mecánico',
+      totalHours: 2,
+      labor: [
+          { mechanicId: 'u1', mechanicName: 'Juan Mecánico', hours: 2 }
+      ],
       description: 'Revisión de frenos y cambio de pastillas delanteras.'
     }
   ];

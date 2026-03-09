@@ -1,7 +1,7 @@
 import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import { FormBuilder, FormGroup, FormArray, ReactiveFormsModule, Validators } from '@angular/forms';
 import { WorkshopService } from '../../services/workshop.service';
 import { Vehicle, VehicleNote, VehicleMaintenance } from '../../models/workshop.model';
 
@@ -97,18 +97,22 @@ import { MessageService } from 'primeng/api';
                                 <tr>
                                     <th>Fecha</th>
                                     <th>Descripción</th>
-                                    <th>Mecánico</th>
+                                    <th>Mecánicos</th>
                                     <th>Coste</th>
-                                    <th>Horas</th>
+                                    <th>Total Horas</th>
                                 </tr>
                             </ng-template>
                             <ng-template pTemplate="body" let-note>
                                 <tr>
                                     <td>{{ note.date | date:'dd/MM/yyyy' }}</td>
                                     <td>{{ note.description }}</td>
-                                    <td>{{ note.mechanicName }}</td>
+                                    <td>
+                                        <div *ngFor="let labor of note.labor">
+                                            {{ labor.mechanicName }}: <strong>{{ labor.hours }}h</strong>
+                                        </div>
+                                    </td>
                                     <td>{{ note.cost | currency:'EUR' }}</td>
-                                    <td>{{ note.hours }} h</td>
+                                    <td>{{ note.totalHours }} h</td>
                                 </tr>
                             </ng-template>
                             <ng-template pTemplate="emptymessage">
@@ -165,6 +169,50 @@ import { MessageService } from 'primeng/api';
             </div>
         </div>
 
+        <!-- Vehicle Edit Dialog -->
+        <p-dialog [(visible)]="vehicleDialog" [style]="{width: '450px'}" header="Editar Vehículo" [modal]="true" styleClass="p-fluid">
+            <ng-template pTemplate="content">
+                <form [formGroup]="vehicleForm">
+                    <div class="field">
+                        <label for="v-name">Nombre</label>
+                        <input type="text" pInputText id="v-name" formControlName="name" required autofocus />
+                        <small class="p-error" *ngIf="vehicleForm.get('name')?.invalid && vehicleForm.get('name')?.dirty">Nombre es requerido.</small>
+                    </div>
+                    <div class="field">
+                        <label for="v-licensePlate">Matrícula</label>
+                        <input type="text" pInputText id="v-licensePlate" formControlName="licensePlate" required />
+                        <small class="p-error" *ngIf="vehicleForm.get('licensePlate')?.invalid && vehicleForm.get('licensePlate')?.dirty">Matrícula es requerida.</small>
+                    </div>
+                    <div class="field">
+                        <label for="v-alias">Alias (Opcional)</label>
+                        <input type="text" pInputText id="v-alias" formControlName="alias" />
+                    </div>
+                     <div class="formgrid grid">
+                        <div class="field col">
+                            <label for="v-kilometers">Kilómetros</label>
+                            <p-inputNumber id="v-kilometers" formControlName="kilometers" mode="decimal" [min]="0"></p-inputNumber>
+                        </div>
+                        <div class="field col">
+                            <label for="v-hours">Horas de Uso</label>
+                            <p-inputNumber id="v-hours" formControlName="hours" mode="decimal" [min]="0" [minFractionDigits]="1"></p-inputNumber>
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="v-status">Estado</label>
+                        <p-dropdown id="v-status" [options]="statusOptions" formControlName="status" optionLabel="label" optionValue="value" appendTo="body"></p-dropdown>
+                    </div>
+                    <div class="field">
+                        <label for="v-image">URL Imagen (Opcional)</label>
+                        <input type="text" pInputText id="v-image" formControlName="imageUrl" />
+                    </div>
+                </form>
+            </ng-template>
+            <ng-template pTemplate="footer">
+                <button pButton label="Cancelar" icon="pi pi-times" class="p-button-text" (click)="hideVehicleDialog()"></button>
+                <button pButton label="Guardar" icon="pi pi-check" class="p-button-text" (click)="saveVehicle()" [disabled]="vehicleForm.invalid"></button>
+            </ng-template>
+        </p-dialog>
+
         <!-- Note Dialog -->
         <p-dialog [(visible)]="noteDialog" [style]="{width: '450px'}" header="Añadir Nota / Reparación" [modal]="true" styleClass="p-fluid">
             <ng-template pTemplate="content">
@@ -173,23 +221,53 @@ import { MessageService } from 'primeng/api';
                         <label for="date">Fecha</label>
                         <p-calendar id="date" formControlName="date" dateFormat="dd/mm/yy" [showIcon]="true" appendTo="body"></p-calendar>
                     </div>
-                    <div class="formgrid grid">
-                        <div class="field col">
-                            <label for="cost">Coste (€)</label>
-                            <p-inputNumber id="cost" formControlName="cost" mode="currency" currency="EUR" locale="es-ES"></p-inputNumber>
-                        </div>
-                        <div class="field col">
-                            <label for="hours">Horas Trabajo</label>
-                            <p-inputNumber id="hours" formControlName="hours" [minFractionDigits]="1"></p-inputNumber>
-                        </div>
-                    </div>
-                    <div class="field">
-                        <label for="mechanic">Mecánico / Usuario</label>
-                        <p-dropdown id="mechanic" [options]="users" formControlName="mechanicId" optionLabel="name" optionValue="id" placeholder="Seleccionar..."></p-dropdown>
-                    </div>
+
                     <div class="field">
                         <label for="description">Descripción / Nota</label>
                         <textarea id="description" pInputTextarea formControlName="description" rows="3" autoResize="autoResize"></textarea>
+                    </div>
+
+                    <div class="field">
+                        <label class="block font-bold mb-2">Mecánicos y Horas</label>
+                        
+                        <div formArrayName="labor">
+                            <div *ngFor="let labor of laborControls.controls; let i=index" [formGroupName]="i" class="formgrid grid align-items-end mb-2">
+                                <div class="field col-7">
+                                    <label *ngIf="i===0">Mecánico</label>
+                                    <p-dropdown 
+                                        [options]="users" 
+                                        formControlName="mechanicId" 
+                                        optionLabel="name" 
+                                        optionValue="id" 
+                                        placeholder="Seleccionar..."
+                                        [filter]="true"
+                                        filterBy="name"
+                                        appendTo="body"
+                                        styleClass="w-full">
+                                    </p-dropdown>
+                                </div>
+                                <div class="field col-3">
+                                    <label *ngIf="i===0">Horas</label>
+                                    <p-inputNumber 
+                                        formControlName="hours" 
+                                        [minFractionDigits]="1" 
+                                        [showButtons]="false"
+                                        suffix=" h"
+                                        inputStyleClass="w-full">
+                                    </p-inputNumber>
+                                </div>
+                                <div class="field col-2">
+                                    <button pButton icon="pi pi-trash" class="p-button-danger p-button-outlined" (click)="removeLabor(i)" [disabled]="laborControls.length === 1"></button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <button pButton type="button" label="Añadir Mecánico" icon="pi pi-plus" class="p-button-secondary p-button-sm mt-2" (click)="addLabor()"></button>
+                    </div>
+
+                    <div class="field mt-3">
+                        <label for="cost">Coste (€) (Opcional)</label>
+                        <p-inputNumber id="cost" formControlName="cost" mode="currency" currency="EUR" locale="es-ES"></p-inputNumber>
                     </div>
                 </form>
             </ng-template>
@@ -215,6 +293,15 @@ export class VehicleDetailComponent implements OnInit {
   noteDialog: boolean = false;
   noteForm!: FormGroup;
 
+  vehicleDialog: boolean = false;
+  vehicleForm!: FormGroup;
+
+  statusOptions = [
+      { label: 'Activo', value: 'active' },
+      { label: 'Inactivo', value: 'inactive' },
+      { label: 'Mantenimiento', value: 'maintenance' }
+  ];
+
   // Mock users for dropdown
   users = [
     { id: 'u1', name: 'Juan Mecánico' },
@@ -235,11 +322,40 @@ export class VehicleDetailComponent implements OnInit {
   initForm() {
       this.noteForm = this.fb.group({
           date: [new Date(), Validators.required],
-          cost: [0, [Validators.required, Validators.min(0)]],
-          hours: [0, [Validators.required, Validators.min(0)]],
-          mechanicId: ['', Validators.required],
-          description: ['', Validators.required]
+          cost: [0], // Optional
+          description: ['', Validators.required],
+          labor: this.fb.array([])
       });
+
+      this.addLabor(); // Add initial row
+
+      this.vehicleForm = this.fb.group({
+          name: ['', Validators.required],
+          licensePlate: ['', Validators.required],
+          alias: [''],
+          kilometers: [0, [Validators.required, Validators.min(0)]],
+          hours: [0, [Validators.required, Validators.min(0)]],
+          status: ['active', Validators.required],
+          imageUrl: ['']
+      });
+  }
+
+  get laborControls() {
+      return this.noteForm.get('labor') as FormArray;
+  }
+
+  addLabor() {
+      const laborGroup = this.fb.group({
+          mechanicId: ['', Validators.required],
+          hours: [1, [Validators.required, Validators.min(0.1)]]
+      });
+      this.laborControls.push(laborGroup);
+  }
+
+  removeLabor(index: number) {
+      if (this.laborControls.length > 1) {
+          this.laborControls.removeAt(index);
+      }
   }
 
   loadData(id: string) {
@@ -269,10 +385,10 @@ export class VehicleDetailComponent implements OnInit {
       this.noteForm.reset({
           date: new Date(),
           cost: 0,
-          hours: 0,
-          mechanicId: '',
           description: ''
       });
+      this.laborControls.clear();
+      this.addLabor();
       this.noteDialog = true;
   }
 
@@ -284,15 +400,26 @@ export class VehicleDetailComponent implements OnInit {
       if (this.noteForm.invalid || !this.vehicle) return;
 
       const formValue = this.noteForm.value;
-      const mechanic = this.users.find(u => u.id === formValue.mechanicId);
+      
+      // Map labor array to include mechanic names
+      const laborData = formValue.labor.map((item: any) => {
+          const mechanic = this.users.find(u => u.id === item.mechanicId);
+          return {
+              mechanicId: item.mechanicId,
+              mechanicName: mechanic ? mechanic.name : 'Unknown',
+              hours: item.hours
+          };
+      });
+
+      // Calculate total hours
+      const totalHours = laborData.reduce((acc: number, curr: any) => acc + curr.hours, 0);
 
       const newNote: Omit<VehicleNote, 'id'> = {
           vehicleId: this.vehicle.id,
           date: formValue.date,
           cost: formValue.cost,
-          hours: formValue.hours,
-          mechanicId: formValue.mechanicId,
-          mechanicName: mechanic ? mechanic.name : 'Unknown',
+          totalHours: totalHours,
+          labor: laborData,
           description: formValue.description
       };
 
@@ -309,7 +436,38 @@ export class VehicleDetailComponent implements OnInit {
   }
 
   editVehicle() {
-      this.messageService.add({ severity: 'info', summary: 'Info', detail: 'Funcionalidad de edición en desarrollo' });
+      if (!this.vehicle) return;
+      this.vehicleForm.patchValue({
+          name: this.vehicle.name,
+          licensePlate: this.vehicle.licensePlate,
+          alias: this.vehicle.alias,
+          kilometers: this.vehicle.kilometers,
+          hours: this.vehicle.hours,
+          status: this.vehicle.status,
+          imageUrl: this.vehicle.imageUrl
+      });
+      this.vehicleDialog = true;
+  }
+
+  saveVehicle() {
+      if (this.vehicleForm.invalid || !this.vehicle) return;
+
+      const updatedData = this.vehicleForm.value;
+      
+      this.workshopService.updateVehicle(this.vehicle.id, updatedData).subscribe({
+          next: (updatedVehicle) => {
+              this.vehicle = updatedVehicle;
+              this.messageService.add({ severity: 'success', summary: 'Éxito', detail: 'Vehículo actualizado correctamente' });
+              this.hideVehicleDialog();
+          },
+          error: () => {
+              this.messageService.add({ severity: 'error', summary: 'Error', detail: 'No se pudo actualizar el vehículo' });
+          }
+      });
+  }
+
+  hideVehicleDialog() {
+      this.vehicleDialog = false;
   }
 
   goBack() {

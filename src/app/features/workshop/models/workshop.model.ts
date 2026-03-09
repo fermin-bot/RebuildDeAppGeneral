@@ -19,11 +19,16 @@ export interface VehicleNote {
     vehicleId: string;
     date: Date;
     cost: number;
-    hours: number; // Labor hours
-    mechanicId: string;
-    mechanicName?: string; // For display
+    labor: NoteLabor[]; // Array of mechanics and their hours
+    totalHours: number; // Calculated total
     description: string;
     createdAt?: Date;
+}
+
+export interface NoteLabor {
+    mechanicId: string;
+    mechanicName?: string;
+    hours: number;
 }
 
 export interface VehicleMaintenance {
